@@ -3,8 +3,57 @@ import requests
 import logging
 import json
 from config import Config
+from urllib.parse import urljoin
 
 logging.basicConfig(level=logging.INFO)
+
+def create_webhook(repo_name: str, owner: str) -> dict:
+    """Create a webhook for the repository to receive workflow run events."""
+    headers = {
+        "Authorization": f"token {Config.GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    
+    # Construct webhook configuration
+    webhook_url = urljoin(Config.API_BASE_URL, "/github/webhook")
+    webhook_config = {
+        "url": webhook_url,
+        "content_type": "json",
+        "secret": Config.GITHUB_WEBHOOK_SECRET,
+        "insecure_ssl": "0"
+    }
+    
+    # Events we want to receive
+    events = ["workflow_run"]
+    
+    payload = {
+        "name": "web",
+        "active": True,
+        "events": events,
+        "config": webhook_config
+    }
+    
+    github_api_url = f"https://api.github.com/repos/{owner}/{repo_name}/hooks"
+    
+    try:
+        response = requests.post(github_api_url, headers=headers, json=payload)
+        response_json = response.json()
+        
+        if response.status_code not in (200, 201):
+            error_message = (
+                f"GitHub Webhook Creation Error:\n"
+                f"Status Code: {response.status_code}\n"
+                f"Response: {json.dumps(response_json, indent=2)}"
+            )
+            logging.error(error_message)
+            raise Exception(f"GitHub webhook creation failed: {response_json.get('message', 'Unknown error')}")
+        
+        logging.info(f"Successfully created webhook for {owner}/{repo_name}")
+        return response_json
+    except requests.exceptions.RequestException as e:
+        error_message = f"GitHub API request failed during webhook creation: {str(e)}"
+        logging.error(error_message)
+        raise Exception(error_message)
 
 def create_github_repo(sanitized_name: str) -> dict:
     headers = {
@@ -44,6 +93,13 @@ def create_github_repo(sanitized_name: str) -> dict:
             )
             logging.error(error_message)
             raise Exception(f"GitHub repo creation failed: {response_json.get('message', 'Unknown error')}")
+        
+        # After successful repo creation, set up the webhook
+        owner = response_json.get("owner", {}).get("login")
+        if owner:
+            create_webhook(sanitized_name, owner)
+        else:
+            logging.error("Could not determine repository owner for webhook creation")
         
         logging.info(f"Successfully created repository: {response_json.get('html_url')}")
         return response_json

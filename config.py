@@ -8,6 +8,8 @@ class Config:
     COMPANY_IDENTIFIER = os.getenv("COMPANY_IDENTIFIER")
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
     GITHUB_ORG = os.getenv("GITHUB_ORG")
+    GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
+    API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8888")  # URL where this API is hosted
     XCODEGEN_PATH = os.getenv("XCODEGEN_PATH", "xcodegen")
 
     @classmethod
@@ -19,6 +21,10 @@ class Config:
             missing.append("COMPANY_IDENTIFIER")
         if not cls.GITHUB_TOKEN:
             missing.append("GITHUB_TOKEN")
+        if not cls.GITHUB_WEBHOOK_SECRET:
+            missing.append("GITHUB_WEBHOOK_SECRET")
+        if not cls.API_BASE_URL:
+            missing.append("API_BASE_URL")
         if missing:
             raise EnvironmentError(
                 f"Missing required environment variables: {', '.join(missing)}"

@@ -116,7 +116,14 @@ jobs:
           name: debug-build
           path: ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
           retention-days: 5
-"""
+
+      - name: Notify Webhook on Failure
+        if: failure()
+        uses: distributhor/workflow-webhook@v3
+        env:
+          webhook_url: ${{{{ secrets.WEBHOOK_URL }}}}
+          webhook_secret: ${{{{ secrets.WEBHOOK_SECRET }}}}
+          data: '{{"repository": "${{{{ github.repository }}}}", "workflow": "${{{{ github.workflow }}}}", "run_id": "${{{{ github.run_id }}}}", "run_number": "${{{{ github.run_number }}}}"}}'"""
     with open(workflow_path, "w") as f:
         f.write(workflow_contents)
 
