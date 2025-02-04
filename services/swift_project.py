@@ -38,21 +38,31 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 env:
-  XCODE_VERSION: '14.2'
-  DEVELOPER_DIR: /Applications/Xcode_14.2.app/Contents/Developer
+  XCODE_VERSION: '15.2'
+  DEVELOPER_DIR: /Applications/Xcode_15.2.app/Contents/Developer
 
 jobs:
   build:
     name: Build and Test
-    runs-on: macos-latest
+    runs-on: macos-14
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.2.app
+          xcodebuild -version
+          echo "Selected Xcode path: $(xcode-select -p)"
 
       - name: Cache Homebrew
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/Library/Caches/Homebrew
@@ -65,7 +75,7 @@ jobs:
         run: brew install xcodegen
 
       - name: Cache Swift packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             .build
@@ -75,7 +85,7 @@ jobs:
             ${{{{ runner.os }}}}-spm-
 
       - name: Cache DerivedData
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: ${{{{ runner.os }}}}-derived-data-${{{{ hashFiles('project.yml') }}}}
@@ -86,20 +96,22 @@ jobs:
         run: xcodegen generate
 
       - name: Build iOS App
+        id: build
         run: |
-          xcodebuild clean build \\
+          set -o pipefail && xcodebuild clean build \\
             -project {sanitized_name}.xcodeproj \\
             -scheme {sanitized_name} \\
             -sdk iphonesimulator \\
-            -destination 'platform=iOS Simulator,name=iPhone 14,OS=16.2' \\
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \\
             -configuration Debug \\
             -derivedDataPath ~/Library/Developer/Xcode/DerivedData \\
             CODE_SIGN_IDENTITY="" \\
             CODE_SIGNING_REQUIRED=NO \\
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO | xcpretty
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        if: success()
+        uses: actions/upload-artifact@v4
         with:
           name: debug-build
           path: ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
