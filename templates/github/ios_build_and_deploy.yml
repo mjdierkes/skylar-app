@@ -1,0 +1,120 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  XCODE_VERSION: '15.2'
+  DEVELOPER_DIR: /Applications/Xcode_15.2.app/Contents/Developer
+  APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.2.app
+          xcodebuild -version
+          echo "Selected Xcode path: $(xcode-select -p)"
+
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            ~/Library/Caches/Homebrew/downloads
+          key: ${{ runner.os }}-brew-${{ hashFiles('.github/workflows/ios_build_and_deploy.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-brew-
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-derived-data-${{ hashFiles('project.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-derived-data-
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build iOS App
+        id: build
+        run: |
+          set -o pipefail && xcodebuild clean build \
+            -project {APP_NAME}.xcodeproj \
+            -scheme {APP_NAME} \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \
+            -configuration Debug \
+            -derivedDataPath ~/Library/Developer/Xcode/DerivedData \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO | xcpretty
+
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-build
+          path: ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+          retention-days: 5
+
+      - name: Upload to Appetize.io
+        if: success()
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app file found"
+            exit 1
+          fi
+          # Create a zip file of the .app
+          cd $(dirname "$APP_PATH")
+          zip -r app.zip $(basename "$APP_PATH")
+          
+          # Upload to Appetize.io
+          RESPONSE=$(curl --fail -X POST \
+            -H "Authorization: Bearer ${{ env.APPETIZE_API_TOKEN }}" \
+            -F "file=@app.zip" \
+            -F "platform=ios" \
+            https://api.appetize.io/v1/apps)
+          
+          echo "Appetize.io upload response: $RESPONSE"
+          APP_URL=$(echo $RESPONSE | jq -r '.publicURL')
+          echo "Appetize.io Public URL: $APP_URL"
+          echo "appetize_url=$APP_URL" >> $GITHUB_ENV
+
+      - name: Notify Webhook on Failure
+        if: failure()
+        uses: distributhor/workflow-webhook@v3
+        env:
+          webhook_url: ${{ secrets.WEBHOOK_URL }}
+          webhook_secret: ${{ secrets.WEBHOOK_SECRET }}
+          data: '{"repository": "${{ github.repository }}", "workflow": "${{ github.workflow }}", "run_id": "${{ github.run_id }}", "run_number": "${{ github.run_number }}"}' 

@@ -2,9 +2,12 @@ import os
 import re
 import subprocess
 from config import Config
+from services.github_client import create_github_repo, push_to_github, GitHubClient
 
-# Path to the swift template files (relative to this file)
-TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates", "swift")
+# Path to the template files (relative to this file)
+TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "templates")
+SWIFT_TEMPLATE_DIR = os.path.join(TEMPLATE_DIR, "swift")
+GITHUB_TEMPLATE_DIR = os.path.join(TEMPLATE_DIR, "github")
 
 def sanitize_name(app_name: str) -> str:
     """Remove non-alphanumeric characters for directory and target names."""
@@ -19,6 +22,10 @@ def create_swift_project(app_name: str):
     if os.path.exists(project_dir):
         raise FileExistsError("A project with this name already exists.")
 
+    # First check if we have the required tokens
+    if not hasattr(Config, 'APPETIZE_API_TOKEN') or not Config.APPETIZE_API_TOKEN:
+        raise ValueError("APPETIZE_API_TOKEN is required in your .env file")
+
     os.makedirs(project_dir)
     sources_dir = os.path.join(project_dir, "Sources")
     os.makedirs(sources_dir, exist_ok=True)
@@ -27,103 +34,16 @@ def create_swift_project(app_name: str):
     workflows_dir = os.path.join(project_dir, ".github", "workflows")
     os.makedirs(workflows_dir, exist_ok=True)
 
-    # Create GitHub Actions workflow file
+    # Copy and process the GitHub Actions workflow file
+    workflow_template_path = os.path.join(GITHUB_TEMPLATE_DIR, "ios_build_and_deploy.yml")
     workflow_path = os.path.join(workflows_dir, "ios_build_and_deploy.yml")
-    workflow_contents = f"""name: iOS Build
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  issues: write
-
-env:
-  XCODE_VERSION: '15.2'
-  DEVELOPER_DIR: /Applications/Xcode_15.2.app/Contents/Developer
-
-jobs:
-  build:
-    name: Build and Test
-    runs-on: macos-14
     
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Select Xcode Version
-        run: |
-          sudo xcode-select -s /Applications/Xcode_15.2.app
-          xcodebuild -version
-          echo "Selected Xcode path: $(xcode-select -p)"
-
-      - name: Cache Homebrew
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/Homebrew
-            ~/Library/Caches/Homebrew/downloads
-          key: ${{{{ runner.os }}}}-brew-${{{{ hashFiles('.github/workflows/ios_build_and_deploy.yml') }}}}
-          restore-keys: |
-            ${{{{ runner.os }}}}-brew-
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Cache Swift packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            .build
-            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages/checkouts
-          key: ${{{{ runner.os }}}}-spm-${{{{ hashFiles('**/Package.resolved') }}}}
-          restore-keys: |
-            ${{{{ runner.os }}}}-spm-
-
-      - name: Cache DerivedData
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{{{ runner.os }}}}-derived-data-${{{{ hashFiles('project.yml') }}}}
-          restore-keys: |
-            ${{{{ runner.os }}}}-derived-data-
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
-      - name: Build iOS App
-        id: build
-        run: |
-          set -o pipefail && xcodebuild clean build \\
-            -project {sanitized_name}.xcodeproj \\
-            -scheme {sanitized_name} \\
-            -sdk iphonesimulator \\
-            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.2' \\
-            -configuration Debug \\
-            -derivedDataPath ~/Library/Developer/Xcode/DerivedData \\
-            CODE_SIGN_IDENTITY="" \\
-            CODE_SIGNING_REQUIRED=NO \\
-            CODE_SIGNING_ALLOWED=NO | xcpretty
-
-      - name: Upload Build Artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-build
-          path: ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-          retention-days: 5
-
-      - name: Notify Webhook on Failure
-        if: failure()
-        uses: distributhor/workflow-webhook@v3
-        env:
-          webhook_url: ${{{{ secrets.WEBHOOK_URL }}}}
-          webhook_secret: ${{{{ secrets.WEBHOOK_SECRET }}}}
-          data: '{{"repository": "${{{{ github.repository }}}}", "workflow": "${{{{ github.workflow }}}}", "run_id": "${{{{ github.run_id }}}}", "run_number": "${{{{ github.run_number }}}}"}}'"""
+    with open(workflow_template_path, "r") as f:
+        workflow_contents = f.read()
+    
+    # Replace the app name placeholder
+    workflow_contents = workflow_contents.replace("{APP_NAME}", sanitized_name)
+    
     with open(workflow_path, "w") as f:
         f.write(workflow_contents)
 
@@ -145,7 +65,7 @@ jobs:
         f.write(export_options_contents)
 
     # --- Copy and process the MainApp.swift template ---
-    main_app_template_path = os.path.join(TEMPLATE_DIR, "MainApp.swift")
+    main_app_template_path = os.path.join(SWIFT_TEMPLATE_DIR, "MainApp.swift")
     with open(main_app_template_path, "r") as f:
         main_app_contents = f.read()
     # Replace placeholder {APP_NAME} with the sanitized app name.
@@ -155,7 +75,7 @@ jobs:
         f.write(main_app_contents)
 
     # --- Copy the ContentView.swift template ---
-    content_view_template_path = os.path.join(TEMPLATE_DIR, "ContentView.swift")
+    content_view_template_path = os.path.join(SWIFT_TEMPLATE_DIR, "ContentView.swift")
     with open(content_view_template_path, "r") as f:
         content_view_contents = f.read()
     content_view_file = os.path.join(sources_dir, "ContentView.swift")
@@ -209,11 +129,21 @@ targets:
         raise RuntimeError(f"XcodeGen failed: {str(e)}")
 
     # --- Initialize Git only if GitHub token is available ---
+    gh_repo = None
     if Config.GITHUB_TOKEN and Config.GITHUB_TOKEN != "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN":
         try:
             subprocess.run(["git", "init"], cwd=project_dir, check=True)
             subprocess.run(["git", "add", "."], cwd=project_dir, check=True)
             subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=project_dir, check=True)
+            
+            # Create and push to GitHub repository
+            gh_repo = create_github_repo(sanitized_name)
+            push_to_github(project_dir, gh_repo)
+            
+            # Now that the repo exists, add the Appetize.io token as a secret
+            if hasattr(Config, 'APPETIZE_API_TOKEN') and Config.APPETIZE_API_TOKEN:
+                github_client = GitHubClient()
+                github_client.add_secret(sanitized_name, "APPETIZE_API_TOKEN", Config.APPETIZE_API_TOKEN)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Git initialization failed: {str(e)}")
 

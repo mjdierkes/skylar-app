@@ -11,6 +11,7 @@ class Config:
     GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET")
     API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8888")  # URL where this API is hosted
     XCODEGEN_PATH = os.getenv("XCODEGEN_PATH", "xcodegen")
+    APPETIZE_API_TOKEN = os.getenv("APPETIZE_API_TOKEN")
 
     @classmethod
     def validate(cls):
@@ -25,6 +26,8 @@ class Config:
             missing.append("GITHUB_WEBHOOK_SECRET")
         if not cls.API_BASE_URL:
             missing.append("API_BASE_URL")
+        if not cls.APPETIZE_API_TOKEN:
+            missing.append("APPETIZE_API_TOKEN")
         if missing:
             raise EnvironmentError(
                 f"Missing required environment variables: {', '.join(missing)}"
