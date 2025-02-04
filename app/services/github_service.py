@@ -34,12 +34,12 @@ class GitHubService:
             self._init_git_repo(project_path)
 
             # Create GitHub repository using gh CLI
-            subprocess.run(['gh', 'repo', 'create', project_name, '--private', '--source', project_path, '--push'], 
+            subprocess.run(['gh', 'repo', 'create', 'wrappercompany/' + project_name, '--private', '--source', project_path, '--push'], 
                          cwd=project_path, check=True)
 
             # Get the repository object
-            user = self.github.get_user()
-            repo = user.get_repo(project_name)
+            org = self.github.get_organization('wrappercompany')
+            repo = org.get_repo(project_name)
             
             return repo
             
