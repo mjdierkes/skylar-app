@@ -1,10 +1,16 @@
 steps:
-  - label: "🔍 SwiftLint"
-    command: |
-      brew install swiftlint
-      swiftlint
-    agents:
-      queue: "ios"
+  - label: "🔨 Build"
+    command: 
+      - "xcodebuild -project Scaler.xcodeproj -scheme Scaler -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 15' build"
+    
+  - label: "🧪 Test"
+    command:
+      - "xcodebuild -project Scaler.xcodeproj -scheme Scaler -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 15' test"
+
+  - label: "✨ SwiftLint"
+    command:
+      - "brew install swiftlint"
+      - "swiftlint lint"
 
   - label: "🏗 Build"
     command: |
