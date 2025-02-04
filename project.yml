@@ -1,24 +1,47 @@
-name: Scaler
+name: ScalerApp
 options:
-  bundleIdPrefix: com.elusive
+  bundleIdPrefix: com.scaler
   deploymentTarget:
-    iOS: 17.0
+    iOS: 16.0
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: "" # Add your team ID here
 
 targets:
-  Scaler:
+  ScalerApp:
     type: application
     platform: iOS
     sources:
-      - Scaler
+      - path: Sources
     settings:
       base:
-        INFOPLIST_FILE: Scaler/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.elusive.scaler
+        INFOPLIST_FILE: Sources/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.scaler.app
     info:
-      path: Scaler/Info.plist
+      path: Sources/Info.plist
       properties:
-        UILaunchScreen: {}
-        CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UILaunchStoryboardName: LaunchScreen
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: true 
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    dependencies:
+      - sdk: SwiftUI.framework
+    
+  ScalerAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/Unit
+    dependencies:
+      - target: ScalerApp
+    
+  ScalerAppUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/UI
+    dependencies:
+      - target: ScalerApp

@@ -1,0 +1,41 @@
+steps:
+  - label: "🔍 SwiftLint"
+    command: |
+      brew install swiftlint
+      swiftlint
+    agents:
+      queue: "ios"
+
+  - label: "🏗 Build"
+    command: |
+      xcodebuild clean build \
+        -scheme "${SCHEME_NAME}" \
+        -workspace "${WORKSPACE_NAME}.xcworkspace" \
+        -destination "platform=iOS Simulator,name=iPhone 14 Pro" \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGNING_ALLOWED=NO
+    agents:
+      queue: "ios"
+
+  - label: "🧪 Unit Tests"
+    command: |
+      xcodebuild test \
+        -scheme "${SCHEME_NAME}" \
+        -workspace "${WORKSPACE_NAME}.xcworkspace" \
+        -destination "platform=iOS Simulator,name=iPhone 14 Pro" \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGNING_ALLOWED=NO
+    agents:
+      queue: "ios"
+
+  - label: "📱 UI Tests"
+    command: |
+      xcodebuild test \
+        -scheme "${SCHEME_NAME}" \
+        -workspace "${WORKSPACE_NAME}.xcworkspace" \
+        -destination "platform=iOS Simulator,name=iPhone 14 Pro" \
+        -testPlan UITests \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGNING_ALLOWED=NO
+    agents:
+      queue: "ios"
