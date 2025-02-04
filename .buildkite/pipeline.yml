@@ -39,3 +39,23 @@ steps:
         CODE_SIGNING_ALLOWED=NO
     agents:
       queue: "ios"
+
+  - wait  # Wait for all tests to pass
+
+  - label: "🚀 Push to GitHub"
+    command: |
+      # Configure git
+      git config --global user.email "ci@buildkite.com"
+      git config --global user.name "Buildkite CI"
+      
+      # Add all changes
+      git add .
+      
+      # Commit changes with build number
+      git commit -m "Build #${BUILDKITE_BUILD_NUMBER}: CI automated push"
+      
+      # Push to GitHub
+      git push origin HEAD:main
+    branches: "main"
+    agents:
+      queue: "ios"
