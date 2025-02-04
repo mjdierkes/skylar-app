@@ -51,15 +51,30 @@ async def github_webhook(request: Request):
             workflow_name = workflow_run.get("name")
             run_number = workflow_run.get("run_number")
             html_url = workflow_run.get("html_url")
+            jobs_url = workflow_run.get("jobs_url")
+            logs_url = workflow_run.get("logs_url")
             
             # Log the failure details
             failure_message = (
                 f"⚠️ Workflow failure in {repo_name}\n"
                 f"Workflow: {workflow_name}\n"
                 f"Run Number: {run_number}\n"
-                f"Details: {html_url}"
+                f"Details: {html_url}\n"
+                f"Jobs URL: {jobs_url}\n"
+                f"Logs URL: {logs_url}\n"
+                f"Steps:"
             )
             logging.error(failure_message)
+
+            # Log any step failures if available
+            steps = workflow_run.get("steps", [])
+            for step in steps:
+                if step.get("conclusion") == "failure":
+                    step_message = (
+                        f"  - Step '{step.get('name')}' failed:\n"
+                        f"    Output: {step.get('output', 'No output available')}"
+                    )
+                    logging.error(step_message)
             
             # Here you could add additional notification methods:
             # - Send email notifications
